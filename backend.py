@@ -37,14 +37,67 @@ if not GROQ_API_KEY:
 
 
 # =========================
-# LLM
+# LLM & Clean Helper
 # =========================
 
-llm = ChatGroq(
-    model="qwen/qwen3.6-27b",
-    temperature=0.2,
-    max_tokens=800,
-)
+# =========================
+# LLM & Fallback Helper
+# =========================
+
+def invoke_groq_llm(messages, max_tokens: int = 3500, temperature: float = 0.3):
+    """
+    Invokes Groq LLM with fallback chain across top-performing high-capacity models:
+    1. openai/gpt-oss-120b (Primary: Best quality & reasoning)
+    2. qwen/qwen3.8-27b (Fallback 1: High detail output)
+    3. openai/gpt-oss-20b (Fallback 2: Fast & reliable)
+    """
+    candidate_models = [
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b",
+        "openai/gpt-oss-20b"
+    ]
+    
+    last_error = None
+    for model_name in candidate_models:
+        try:
+            llm_inst = ChatGroq(
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return llm_inst.invoke(messages)
+        except Exception as e:
+            print(f"[LLM Fallback Warning] Model {model_name} failed: {e}. Trying next model...", flush=True)
+            last_error = e
+            
+    raise RuntimeError(f"All candidate Groq models failed. Last error: {last_error}")
+
+def clean_llm_response(text: str) -> str:
+    """
+    Strips raw <think>...</think> tags (both closed and unclosed) and any meta-draft preambles
+    so the output starts cleanly at the first markdown header.
+    """
+    if not text:
+        return ""
+    # 1. Remove closed <think>...</think> tags
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # 2. Handle unclosed <think> tags
+    if "<think>" in cleaned:
+        if "</think>" in cleaned:
+            cleaned = cleaned.split("</think>")[-1].strip()
+        else:
+            match = re.search(r"(#+\s+.*)", cleaned, flags=re.DOTALL)
+            if match:
+                cleaned = match.group(1).strip()
+            else:
+                cleaned = re.sub(r"<think>.*", "", cleaned, flags=re.DOTALL).strip()
+    
+    # 3. Strip any preamble before the first Markdown header (# 🌍 1. Trip Summary or # ...)
+    header_match = re.search(r"(#+\s+.*)", cleaned, flags=re.DOTALL)
+    if header_match:
+        cleaned = header_match.group(1).strip()
+
+    return cleaned
 
 
 # =========================
@@ -60,7 +113,7 @@ class TravelState(TypedDict):
     weather_results: str
     budget_breakdown: str
     itinerary: str
-    llm_calls: int
+    llm_calls: Annotated[int, operator.add]
 
 
 # =========================
@@ -69,14 +122,17 @@ class TravelState(TypedDict):
 
 def flight_agent(state: TravelState):
     query = state["user_query"]
-    flight_data = search_flights(query)
+    try:
+        flight_data = search_flights(query)
+    except Exception as e:
+        flight_data = f"Could not fetch flight data: {e}"
 
     return {
-        "flight_results": flight_data,
+        "flight_results": str(flight_data)[:1200],
         "messages": [
             AIMessage(content="Flight results fetched.")
         ],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": 1
     }
 
 
@@ -85,15 +141,18 @@ def flight_agent(state: TravelState):
 # =========================
 
 def hotel_agent(state: TravelState):
-    query = f"Best hotels, hostels, and homestays for {state['user_query']}"
-    hotel_results = tavily_search(query)
+    query = f"Best hostels hotels homestays near top monuments for {state['user_query']}"
+    try:
+        hotel_results = tavily_search(query)
+    except Exception as e:
+        hotel_results = f"Could not fetch hotel data: {e}"
 
     return {
-        "hotel_results": hotel_results,
+        "hotel_results": str(hotel_results)[:1200],
         "messages": [
             AIMessage(content="Hotel and lodging options fetched.")
         ],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": 1
     }
 
 
@@ -103,69 +162,68 @@ def hotel_agent(state: TravelState):
 
 def ground_transport_agent(state: TravelState):
     query = state["user_query"]
-    mentions = find_location_mentions(query)
-    
-    # Extract travel date matches (e.g. 15-08-2026 or 15 Aug)
-    date_match = re.search(
-        r"(\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*|\d{1,2}[-/\s.]+\d{1,2}[-/\s.]+\d{2,4})", 
-        query, 
-        re.IGNORECASE
-    )
-    date_str = date_match.group(1) if date_match else None
-
-    # Resolve origin and destination
-    if len(mentions) >= 2:
-        origin = mentions[0]
-        destination = mentions[1]
-    elif len(mentions) == 1:
-        origin = "Delhi"
-        destination = mentions[0]
-    else:
-        origin = "Delhi"
-        destination = "Jaipur"
-        
-    print(f"[Ground Agent] Querying trains between {origin} and {destination} for date: {date_str}")
-    res = search_trains_between_stations(origin, destination, date_str)
-    
     output = ""
-    if res.get("success") and res.get("trains"):
-        trains = res["trains"][:3]  # Top 3 trains
-        output += f"### Live Direct Train Schedule from {res['from_code']} to {res['to_code']} ({res['date']}):\n\n"
-        for t in trains:
-            output += f"- **Train {t['train_no']}** ({t['train_name']})\n"
-            output += f"  - Departs: {t['from_time']} | Arrives: {t['to_time']} | Duration: {t['travel_time']}\n"
+    try:
+        mentions = find_location_mentions(query)
+        
+        date_match = re.search(
+            r"(\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*|\d{1,2}[-/\s.]+\d{1,2}[-/\s.]+\d{2,4})", 
+            query, 
+            re.IGNORECASE
+        )
+        date_str = date_match.group(1) if date_match else None
+
+        if len(mentions) >= 2:
+            origin = mentions[0]
+            destination = mentions[1]
+        elif len(mentions) == 1:
+            origin = "Delhi"
+            destination = mentions[0]
+        else:
+            origin = "Delhi"
+            destination = "Jaipur"
             
-            # Fetch real-time seat availability & fares
-            avail_data = None
-            queried_class = "3A"
-            for cls in ["3A", "CC", "SL"]:
-                avail_res = get_seat_availability(t['train_no'], t['from_stn_code'], t['to_stn_code'], res['date'], cls)
-                if avail_res.get("success") and "data" in avail_res:
-                    avail_data = avail_res["data"]
-                    queried_class = cls
-                    break
-            
-            if avail_data:
-                fare = avail_data.get("fare", {}).get("totalFare", "N/A")
-                output += f"  - Fare ({queried_class}): ₹{fare}\n"
+        print(f"[Ground Agent] Querying trains between {origin} and {destination} for date: {date_str}", flush=True)
+        res = search_trains_between_stations(origin, destination, date_str)
+        
+        if res.get("success") and res.get("trains"):
+            trains = res["trains"][:3]
+            output += f"### Live Direct Train Schedule from {res['from_code']} to {res['to_code']} ({res['date']}):\n\n"
+            for t in trains:
+                output += f"- **Train {t['train_no']}** ({t['train_name']})\n"
+                output += f"  - Departs: {t['from_time']} | Arrives: {t['to_time']} | Duration: {t['travel_time']}\n"
                 
-                dates_avail = avail_data.get("availability", [])[:3]  # Next 3 dates
-                if dates_avail:
-                    avail_texts = [f"{d['date']}: {d['availabilityText']} ({d['prediction']})" for d in dates_avail]
-                    output += f"  - Availability: {', '.join(avail_texts)}\n"
-            output += "\n"
-    else:
-        # Fallback to Tavily Search for bus / taxi transport
-        print(f"[Ground Agent] Falling back to web search for driving/bus directions for {origin} to {destination}")
-        tavily_query = f"How to travel from {origin} to {destination} by bus or taxi schedule fares"
-        output = tavily_search(tavily_query)
+                avail_data = None
+                queried_class = "3A"
+                for cls in ["3A", "CC", "SL"]:
+                    avail_res = get_seat_availability(t['train_no'], t['from_stn_code'], t['to_stn_code'], res['date'], cls)
+                    if avail_res.get("success") and "data" in avail_res:
+                        avail_data = avail_res["data"]
+                        queried_class = cls
+                        break
+                
+                if avail_data:
+                    fare = avail_data.get("fare", {}).get("totalFare", "N/A")
+                    output += f"  - Fare ({queried_class}): ₹{fare}\n"
+                    
+                    dates_avail = avail_data.get("availability", [])[:3]
+                    if dates_avail:
+                        avail_texts = [f"{d['date']}: {d['availabilityText']} ({d['prediction']})" for d in dates_avail]
+                        output += f"  - Availability: {', '.join(avail_texts)}\n"
+                output += "\n"
+        else:
+            print(f"[Ground Agent] Falling back to web search for driving/bus directions for {origin} to {destination}", flush=True)
+            tavily_query = f"How to travel from {origin} to {destination} by bus or taxi schedule fares"
+            output = tavily_search(tavily_query)
+    except Exception as e:
+        output = f"Could not fetch ground transport data: {e}"
         
     return {
-        "ground_transport_results": output,
+        "ground_transport_results": str(output)[:1200],
         "messages": [
             AIMessage(content="Ground transport details fetched.")
         ],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": 1
     }
 
 
@@ -174,164 +232,125 @@ def ground_transport_agent(state: TravelState):
 # =========================
 
 def weather_agent(state: TravelState):
-    query = f"Current weather conditions and travel season forecast for {state['user_query']}"
-    weather_results = tavily_search(query)
+    query = f"Current weather conditions and climate forecast for {state['user_query']}"
+    try:
+        weather_results = tavily_search(query)
+    except Exception as e:
+        weather_results = f"Could not fetch weather data: {e}"
 
     return {
-        "weather_results": weather_results,
+        "weather_results": str(weather_results)[:800],
         "messages": [
             AIMessage(content="Weather and climate forecast fetched.")
         ],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "llm_calls": 1
     }
 
 
 # =========================
-# Budget Optimizer Agent
-# =========================
-
-def budget_agent(state: TravelState):
-    prompt = f"""
-You are an expert value-oriented travel budget planner and cost optimizer.
-Your goal is to maximize travel experiences while minimizing total cost, keeping it strictly within the user's budget if specified.
-
-User Request:
-{state['user_query']}
-
-Retrieved Flight Information:
-{state['flight_results']}
-
-Retrieved Train / Ground Transport Information:
-{state['ground_transport_results']}
-
-Retrieved Hotel Information:
-{state['hotel_results']}
-
-Perform the following calculations and optimizations:
-1. Estimate target allocations based on user's budget ceiling or typical destination costs (Flights/Trains, Accommodations, Food & Dining, Daily Activities & Transit).
-2. Compare the retrieved options against this allocation. Mention if trains/buses are a cheaper alternative to flights for domestic routes!
-3. Formulate an experience-maximizing cost-reduction strategy (e.g. recommending booking Zostel hostels, public transit passes, or free sightseeing events).
-4. Output a Markdown table displaying the itemized Cost Breakdown:
-   - Category
-   - Estimated Cost (specify currency)
-   - Optimization Strategy / Detail
-
-Provide the markdown table and a brief explanation of the value-maximization choices. Keep the tone professional, structured, and easy to follow.
-"""
-    response = llm.invoke([
-        SystemMessage(content="You are a value-focused travel budget planning specialist."),
-        HumanMessage(content=prompt)
-    ])
-
-    return {
-        "budget_breakdown": response.content,
-        "messages": [response],
-        "llm_calls": state.get("llm_calls", 0) + 1
-    }
-
-
-# =========================
-# Itinerary Agent
+# Detailed Itinerary Agent Node
 # =========================
 
 def itinerary_agent(state: TravelState):
     prompt = f"""
-Create a complete day-by-day travel itinerary.
+User Query: {state['user_query']}
+Flight Information: {state['flight_results']}
+Train & Ground Transit: {state['ground_transport_results']}
+Hotel & Hostel Options: {state['hotel_results']}
+Weather & Season: {state['weather_results']}
 
-User Query:
-{state['user_query']}
-
-Flight Recommendations:
-{state['flight_results']}
-
-Hotel Recommendations:
-{state['hotel_results']}
-
-Train / Ground Recommendations:
-{state['ground_transport_results']}
-
-Weather Forecast & Climate:
-{state['weather_results']}
-
-Budget Breakdown & Cost Savings Strategy:
-{state['budget_breakdown']}
-
-Make the itinerary practical, budget-aware, weather-appropriate, and easy to follow.
-Detail the activities, meals, and transit suggestions for each day.
-If the user provided specific travel dates, build the itinerary starting exactly on those dates.
+Generate a deeply detailed Day-by-Day itinerary. Include:
+- Morning, Afternoon, Evening, and Night time slots for each day.
+- Exact names of historical monuments, heritage spots, and local markets.
+- Specific authentic dining recommendations (named local restaurants, famous street food items).
+- Ticket prices in INR and transport choices between attractions.
 """
-
-    response = llm.invoke([
-        SystemMessage(content="You are an expert travel planner."),
+    res = invoke_groq_llm([
+        SystemMessage(content="You are an expert travel itinerary planner. Generate rich, detailed day-by-day travel plans."),
         HumanMessage(content=prompt)
-    ])
-
+    ], max_tokens=3000)
     return {
-        "itinerary": response.content,
-        "messages": [response],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "itinerary": res.content,
+        "llm_calls": 1
     }
 
 
 # =========================
-# Final Response Agent
+# Master Travel Planner Agent Node
 # =========================
 
-def final_agent(state: TravelState):
-    final_prompt = f"""
-Generate the final, comprehensive travel plan response for the user.
-
+def travel_planner_agent(state: TravelState):
+    prompt = f"""
 User Request:
 {state['user_query']}
 
-Flights:
+Retrieved Real-Time Flight Data:
 {state['flight_results']}
 
-Train / Bus Transport:
+Retrieved Train / Ground Transit Data:
 {state['ground_transport_results']}
 
-Hotels & Hostels:
+Retrieved Hotel / Hostel Recommendations:
 {state['hotel_results']}
 
-Weather Forecast:
+Retrieved Weather Forecast:
 {state['weather_results']}
 
-Budget breakdown table:
-{state['budget_breakdown']}
-
-Itinerary:
+Detailed Day-by-Day Itinerary Plan:
 {state['itinerary']}
 
-Combine all of the information above and format the final answer beautifully using these exact sections:
+INSTRUCTIONS FOR MASTERPLAN SYNTHESIS:
+- Output clean, beautiful, publication-ready Markdown.
+- You MUST start directly at "# 🌍 1. Trip Summary" without any preambles, draft notes, or echoing these instructions.
+- Ensure all 8 sections are fully populated with rich tables, prices, landmark names, local food, and step-by-step guidance.
 
-1. Trip Summary
-2. Weather Forecast & Packing Tips
-3. Flight & Route Information (suggest Skyscanner links)
-4. Train & Bus Schedule (for Indian routes, provide IRCTC/Redbus search recommendations and ticket prices!)
-5. Lodging Suggestions (specifically mention options like Zostel/Hosteller if budget-friendly)
-6. Cost Breakdown & Budget Optimization (include the markdown cost table here!)
-7. Day-by-Day Itinerary (adapt based on weather, budget, transit, and dates)
-8. Specific Booking Instructions (explain step-by-step how to book the flight, train on IRCTC, and hostel/hotel for these specific dates)
+Use these exact Markdown section headings:
 
-Important:
-- Be clear, practical, and helpful.
-- Mention that live flight API may not provide ticket prices if pricing is unavailable.
-- Ensure the final document looks clean and professional.
+# 🌍 1. Trip Summary
+- **Origin & Destination**: Origin → Destination
+- **Duration**: Days & Nights
+- **Budget Target**: Total per person ceiling with buffer estimate
+- **Traveler Persona & Vibe**: Tailored travel style
+
+# 🌤️ 2. Weather Forecast & Smart Packing Checklist
+- **Expected Weather**: Temperatures, humidity, rain probability
+- **Packing Essentials**: Apparel, footwear, electronics, gear tailored to destination
+
+# ✈️ 3. Flight & Air Route Options
+Markdown table of routes, carriers, layovers, and approximate fares.
+
+# 🚂 4. Train & Ground Transit Guide
+Markdown table of direct trains (train numbers, departure/arrival times, classes, fares) and local commute guidelines (auto, bus, rentals).
+
+# 🏨 5. Recommended Stays (Hostels & Hotels)
+Markdown table of top budget hostels/hotels with nightly rates, location perks, and key highlights.
+
+# 💰 6. Itemized Budget Breakdown
+Markdown table with itemized categories (Transit, Lodging, Food, Sightseeing & Tickets, Buffer, Total).
+
+# 🗺️ 7. Day-by-Day Detailed Itinerary
+Full Day-by-Day schedule (Morning, Afternoon, Evening, Night) with exact times, monuments, ticket prices, and named local food joints.
+
+# 🎟️ 8. Step-by-Step Booking & Execution Guide
+Concrete step-by-step instructions for booking train, stay, local transport, entry tickets, and execution.
 """
 
-    response = llm.invoke([
-        SystemMessage(content="You are a professional AI travel assistant for MoodyTrips."),
-        HumanMessage(content=final_prompt)
-    ])
+    response = invoke_groq_llm([
+        SystemMessage(content="You are MoodyTrips AI master concierge. Output publication-ready markdown starting immediately at '# 🌍 1. Trip Summary'."),
+        HumanMessage(content=prompt)
+    ], max_tokens=3500)
+
+    clean_content = clean_llm_response(response.content)
 
     return {
-        "messages": [response],
-        "llm_calls": state.get("llm_calls", 0) + 1
+        "budget_breakdown": clean_content,
+        "messages": [AIMessage(content=clean_content)],
+        "llm_calls": 1
     }
 
 
 # =========================
-# Build Graph
+# Build Graph Pipeline
 # =========================
 
 graph = StateGraph(TravelState)
@@ -340,18 +359,24 @@ graph.add_node("flight_agent", flight_agent)
 graph.add_node("hotel_agent", hotel_agent)
 graph.add_node("ground_transport_agent", ground_transport_agent)
 graph.add_node("weather_agent", weather_agent)
-graph.add_node("budget_agent", budget_agent)
 graph.add_node("itinerary_agent", itinerary_agent)
-graph.add_node("final_agent", final_agent)
+graph.add_node("travel_planner_agent", travel_planner_agent)
 
+# Fan-out parallel research execution
 graph.add_edge(START, "flight_agent")
-graph.add_edge("flight_agent", "hotel_agent")
-graph.add_edge("hotel_agent", "ground_transport_agent")
-graph.add_edge("ground_transport_agent", "weather_agent")
-graph.add_edge("weather_agent", "budget_agent")
-graph.add_edge("budget_agent", "itinerary_agent")
-graph.add_edge("itinerary_agent", "final_agent")
-graph.add_edge("final_agent", END)
+graph.add_edge(START, "hotel_agent")
+graph.add_edge(START, "ground_transport_agent")
+graph.add_edge(START, "weather_agent")
+
+# Fan-in into itinerary_agent
+graph.add_edge("flight_agent", "itinerary_agent")
+graph.add_edge("hotel_agent", "itinerary_agent")
+graph.add_edge("ground_transport_agent", "itinerary_agent")
+graph.add_edge("weather_agent", "itinerary_agent")
+
+# Flow into travel_planner_agent
+graph.add_edge("itinerary_agent", "travel_planner_agent")
+graph.add_edge("travel_planner_agent", END)
 
 
 # =========================

@@ -111,6 +111,9 @@
                             <h2>Where is your next adventure?</h2>
                             <p>Describe your destination, origin, duration, and target budget.</p>
                         </div>
+                        <button id="mobileMenuBtn" class="mobile-menu-btn" onclick="toggleSidebar()">
+                            ☰ History
+                        </button>
                     </div>
 
                     <div class="input-area">
@@ -140,6 +143,12 @@
                         </button>
                     </div>
                 </section>
+
+                <!-- AGENT PROGRESS INDICATOR -->
+                <div id="statusBox" class="agent-status-box hidden">
+                    <div class="agent-pulse"></div>
+                    <span id="agentStatusText">🤖 Multi-Agent Engine researching flights, hotels, trains & weather...</span>
+                </div>
 
                 <!-- ERROR NOTIFICATION -->
                 <section id="errorBox" class="error-box hidden"></section>

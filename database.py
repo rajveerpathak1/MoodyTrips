@@ -16,7 +16,7 @@ def get_db_url(use_default_db=False):
     
     # If DATABASE_URL is set in environment, use it
     if database_url and not use_default_db:
-        if "sslmode=" not in database_url:
+        if "sslmode=" not in database_url and "localhost" not in database_url and "127.0.0.1" not in database_url:
             separator = "&" if "?" in database_url else "?"
             database_url = f"{database_url}{separator}sslmode=require"
         return database_url

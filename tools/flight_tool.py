@@ -89,6 +89,16 @@ COUNTRY_MAIN_AIRPORT = {
 }
 
 
+# Default origin when user specifies only destination, e.g. "Goa trip"
+DEFAULT_ORIGIN_IATA = os.getenv("DEFAULT_ORIGIN_IATA", "DEL")
+
+
+BASE_URL = "https://api.aviationstack.com/v1/flights"
+
+
+AIRPORTS = airportsdata.load("IATA")
+
+
 
 
 CITY_MAIN_AIRPORT = {
@@ -100,9 +110,38 @@ CITY_MAIN_AIRPORT = {
     "chennai": "MAA",
     "bangalore": "BLR",
     "bengaluru": "BLR",
+    "goa": "GOI",
+    "jaipur": "JAI",
+    "udaipur": "UDR",
+    "varanasi": "VNS",
+    "amritsar": "ATQ",
+    "hyderabad": "HYD",
+    "pune": "PNQ",
+    "kochi": "COK",
+    "cochin": "COK",
+    "kerala": "COK",
+    "ahmedabad": "AMD",
+    "srinagar": "SXR",
+    "leh": "IXL",
+    "ladakh": "IXL",
+    "shimla": "IXC",
+    "chandigarh": "IXC",
+    "manali": "IXC",
+    "agra": "AGR",
+    "port blair": "IXZ",
+    "andaman": "IXZ",
+    "bali": "DPS",
+    "phuket": "HKT",
+    "maldives": "MLE",
+    "male": "MLE",
+    "hanoi": "HAN",
+    "ho chi minh": "SGN",
+    "colombo": "CMB",
+    "kathmandu": "KTM",
     "tokyo": "NRT",
     "osaka": "KIX",
     "kyoto": "KIX",
+    "seoul": "ICN",
     "new york": "JFK",
     "london": "LHR",
     "dubai": "DXB",
@@ -117,6 +156,8 @@ CITY_MAIN_AIRPORT = {
     "rome": "FCO",
     "madrid": "MAD",
     "frankfurt": "FRA",
+    "amsterdam": "AMS",
+    "zurich": "ZRH",
 }
 
 

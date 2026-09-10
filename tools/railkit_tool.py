@@ -38,6 +38,7 @@ CITY_STATION_CODES = {
     "ahmedabad": "ADI",
     "goa": "MAO",
     "madgaon": "MAO",
+    "vasco": "VSG",
     "varanasi": "BSB",
     "amritsar": "ASR",
     "patna": "PNBE",
@@ -45,8 +46,15 @@ CITY_STATION_CODES = {
     "chandigarh": "CDG",
     "dehradun": "DDN",
     "haridwar": "HW",
+    "rishikesh": "YNRK",
     "udaipur": "UDZ",
     "jodhpur": "JU",
+    "jaisalmer": "JSM",
+    "kochi": "ERS",
+    "ernakulam": "ERS",
+    "trivandrum": "TVC",
+    "bhopal": "BPL",
+    "indore": "INDB",
     "shimla": "SML"
 }
 
@@ -140,7 +148,7 @@ def make_railkit_request(path: str) -> dict:
     
     url = f"{API_BASE_URL}{path}"
     try:
-        response = requests.get(url, headers=headers, timeout=12)
+        response = requests.get(url, headers=headers, timeout=5)
         return response.json()
     except Exception as e:
         return {"success": False, "error": f"HTTP request failed: {str(e)}"}

@@ -276,6 +276,44 @@ async function switchChat(threadId) {
 // =====================================================================
 // Travel Request Processing
 // =====================================================================
+function toggleSidebar() {
+    const sidebar = document.getElementById("sidebar");
+    sidebar.classList.toggle("mobile-open");
+}
+
+let statusInterval = null;
+
+function showStatusIndicator(show) {
+    const statusBox = document.getElementById("statusBox");
+    const statusText = document.getElementById("agentStatusText");
+    
+    if (statusInterval) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+    }
+    
+    if (show) {
+        const messages = [
+            "✈️ Flight Agent querying route availability...",
+            "🏨 Hotel Agent searching accommodations & hostels...",
+            "🚂 Ground Agent inspecting train schedules & seat fares...",
+            "🌤️ Weather Agent evaluating climate forecast...",
+            "💰 Budget Optimizer calculating cost allocations...",
+            "🗺️ Itinerary Agent constructing day-by-day travel plan..."
+        ];
+        let idx = 0;
+        statusText.textContent = messages[0];
+        statusBox.classList.remove("hidden");
+        
+        statusInterval = setInterval(() => {
+            idx = (idx + 1) % messages.length;
+            statusText.textContent = messages[idx];
+        }, 2200);
+    } else {
+        statusBox.classList.add("hidden");
+    }
+}
+
 function setPrompt(text) {
     document.getElementById("userInput").value = text;
 }
@@ -290,9 +328,11 @@ function setLoading(isLoading) {
     if (isLoading) {
         btnText.classList.add("hidden");
         btnLoader.classList.remove("hidden");
+        showStatusIndicator(true);
     } else {
         btnText.classList.remove("hidden");
         btnLoader.classList.add("hidden");
+        showStatusIndicator(false);
     }
 }
 
