@@ -2,14 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>TripMate AI</title>
-
+    <meta name="description" content="MoodyTrips AI — Multi-Agent Intelligent Travel Planner powered by LangGraph, Groq, and PostgreSQL.">
+    <title>MoodyTrips AI — Multi-Agent Travel Planner</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-
 <body>
 
     <div class="page-bg">
@@ -18,103 +16,165 @@
         <div class="gradient-circle circle-3"></div>
     </div>
 
-    <main class="app-container">
-
-        <section class="hero-section">
-            <div class="badge">
-                ✈️ TripMate AI — A Multi-Agent Travel Planner with LangGraph
+    <div class="dashboard-layout">
+        
+        <!-- SIDEBAR (Shown only when logged in) -->
+        <aside id="sidebar" class="sidebar hidden">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">🌍</span>
+                    <span class="logo-text">MoodyTrips</span>
+                    <span class="logo-badge">AI</span>
+                </div>
+                <button id="newChatBtn" class="new-chat-btn" onclick="startNewChat()">
+                    <span class="btn-icon">+</span> New Trip
+                </button>
             </div>
+            
+            <div class="sidebar-content">
+                <h3 class="section-title">My Travel Plans</h3>
+                <div id="chatList" class="chat-list">
+                    <!-- Dynamic chat threads go here -->
+                    <div class="chat-list-placeholder">No travel plans yet.</div>
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="avatar">U</div>
+                    <div class="user-info">
+                        <p id="userEmail" class="user-email">user@moodytrips.com</p>
+                        <span class="status-indicator"><span class="status-dot"></span> Online</span>
+                    </div>
+                </div>
+                <button id="logoutBtn" class="logout-btn" onclick="logout()" title="Logout">
+                    Sign Out ➔
+                </button>
+            </div>
+        </aside>
 
-            <h1>
-                Plan Your Perfect Trip with AI
-            </h1>
+        <!-- MAIN CONTENT AREA -->
+        <main class="main-content">
+            
+            <!-- AUTHENTICATION CARD (Shown when logged out) -->
+            <section id="authCard" class="auth-card">
+                <div class="auth-header">
+                    <h2>🌍 MoodyTrips AI</h2>
+                    <p>Your intelligent multi-agent travel companion</p>
+                </div>
+                
+                <div class="auth-tabs">
+                    <button id="tabLogin" class="auth-tab active" onclick="switchAuthTab('login')">Sign In</button>
+                    <button id="tabRegister" class="auth-tab" onclick="switchAuthTab('register')">Sign Up</button>
+                </div>
+                
+                <form id="authForm" onsubmit="handleAuthSubmit(event)">
+                    <div class="form-group">
+                        <label for="authEmail">Email Address</label>
+                        <input type="email" id="authEmail" required placeholder="name@example.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="authPassword">Password</label>
+                        <input type="password" id="authPassword" required placeholder="••••••••" minlength="6">
+                    </div>
+                    
+                    <div id="registerConfirmGroup" class="form-group hidden">
+                        <label for="authConfirmPassword">Confirm Password</label>
+                        <input type="password" id="authConfirmPassword" placeholder="••••••••">
+                    </div>
+                    
+                    <button type="submit" id="authSubmitBtn" class="auth-submit-btn">
+                        <span>Sign In</span>
+                        <span id="authLoader" class="loader hidden"></span>
+                    </button>
+                </form>
+                
+                <div id="authErrorBox" class="error-box hidden"></div>
+            </section>
 
-            <p>
-                Search flights, discover hotels, and generate a complete travel itinerary using a multi-agent LangGraph system.
-            </p>
-        </section>
-
-        <section class="planner-card">
-
-            <div class="card-header">
-                <div>
-                    <h2>Where do you want to go?</h2>
+            <!-- WORKSPACE (Shown when logged in) -->
+            <section id="chatWorkArea" class="workspace hidden">
+                <section class="hero-section">
+                    <div class="badge">
+                        ✈️ MoodyTrips AI — Multi-Agent Travel Engine
+                    </div>
+                    <h1>Plan Your Perfect Trip</h1>
                     <p>
-                        Example: Plan a complete 7 days Japan trip from Bangladesh under 2 lakhs.
+                        Our multi-agent system uses LangGraph and Groq to research live flights, curate hotels, inspect local weather, optimize budgets, and construct personalized daily itineraries.
                     </p>
-                </div>
+                </section>
 
-                <div class="status-pill">
-                    <span class="status-dot"></span>
-                    Online
-                </div>
-            </div>
+                <section class="planner-card">
+                    <div class="card-header">
+                        <div>
+                            <h2>Where is your next adventure?</h2>
+                            <p>Describe your destination, origin, duration, and target budget.</p>
+                        </div>
+                    </div>
 
-            <div class="input-area">
-                <textarea
-                    id="userInput"
-                    placeholder="Plan a complete 7 days Japan trip including flights, hotels and sightseeing under 2 lakhs..."
-                ></textarea>
+                    <div class="input-area">
+                        <textarea
+                            id="userInput"
+                            placeholder="Plan a 5-day trip to Tokyo from Delhi under 1.5 Lakhs. Include mid-range hotels..."
+                        ></textarea>
 
-                <button id="sendBtn" onclick="sendMessage()">
-                    <span id="btnText">Generate Plan</span>
-                    <span id="btnLoader" class="loader hidden"></span>
-                </button>
-            </div>
+                        <button id="sendBtn" onclick="sendMessage()">
+                            <span id="btnText">Generate Plan</span>
+                            <span id="btnLoader" class="loader hidden"></span>
+                        </button>
+                    </div>
 
-            <div class="quick-prompts">
-                <button onclick="setPrompt('Plan a complete 7 days Japan trip from Bangladesh including flights, hotels and sightseeing under 2 lakhs.')">
-                    Japan Trip
-                </button>
+                    <div class="quick-prompts">
+                        <button onclick="setPrompt('Plan a complete 5 days trip to Bali from Delhi under 80,000 INR with street food and beautiful beaches.')">
+                            🌴 Bali Adventure
+                        </button>
+                        <button onclick="setPrompt('Plan a 7-day trip to Switzerland from Mumbai under 2.5 Lakhs with budget flights and scenic train tours.')">
+                            🏔️ Swiss Alps Tour
+                        </button>
+                        <button onclick="setPrompt('Plan a 3-day weekend trip to Jaipur from Delhi by train on 15th August 2026 under 6,000 INR. Recommend a local hostel.')">
+                            🚂 Jaipur Train Trip
+                        </button>
+                        <button onclick="setPrompt('Plan a 6-day trip to Tokyo, Japan from Delhi under 2 Lakhs. Recommend tech sights.')">
+                            🇯🇵 Tokyo Explorer
+                        </button>
+                    </div>
+                </section>
 
-                <button onclick="setPrompt('Plan a 5 days Dubai trip from Dhaka with flights, hotels and sightseeing.')">
-                    Dubai Trip
-                </button>
+                <!-- ERROR NOTIFICATION -->
+                <section id="errorBox" class="error-box hidden"></section>
 
-                <button onclick="setPrompt('Plan a 7 days Thailand trip from Bangladesh with budget hotels and sightseeing.')">
-                    Thailand Trip
-                </button>
+                <!-- PLAN RESULTS VIEW -->
+                <section id="resultSection" class="result-section hidden">
+                    <div class="result-header">
+                        <div>
+                            <h2 id="resultTitle">AI Travel Plan</h2>
+                            <p id="threadInfo">Thread ID: -</p>
+                        </div>
 
-                <button onclick="setPrompt('Give me all country flight info.')">
-                    Global Flights
-                </button>
-            </div>
+                        <div class="result-actions">
+                            <button class="copy-btn" onclick="copyResult()">
+                                📋 Copy Text
+                            </button>
+                            <button class="download-btn" onclick="downloadPDF()">
+                                📥 Download PDF
+                            </button>
+                        </div>
+                    </div>
 
-        </section>
+                    <div id="pdfContent" class="pdf-content">
+                        <h1 class="pdf-title">MoodyTrips Travel Plan</h1>
+                        <div id="resultBox" class="result-box"></div>
+                    </div>
+                </section>
+                
+                <footer>
+                    Built with FastAPI, LangGraph, Groq LLMs, PostgreSQL checkpointers, Tavily Search & AviationStack APIs
+                </footer>
+            </section>
 
-        <section id="resultSection" class="result-section hidden">
-
-            <div class="result-header">
-                <div>
-                    <h2>Your AI Travel Plan</h2>
-                    <p id="threadInfo">Thread ID: -</p>
-                </div>
-
-                <div class="result-actions">
-                    <button class="copy-btn" onclick="copyResult()">
-                        Copy
-                    </button>
-
-                    <button class="download-btn" onclick="downloadPDF()">
-                        Download PDF
-                    </button>
-                </div>
-            </div>
-
-            <div id="pdfContent" class="pdf-content">
-                <h1 class="pdf-title">AI Travel Plan</h1>
-                <div id="resultBox" class="result-box"></div>
-            </div>
-
-        </section>
-
-        <section id="errorBox" class="error-box hidden"></section>
-
-    </main>
-
-    <footer>
-        Built with FastAPI, LangGraph, Groq, PostgreSQL, Tavily and AviationStack
-    </footer>
+        </main>
+    </div>
 
     <!-- Markdown Renderer -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -122,7 +182,7 @@
     <!-- PDF Download Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-    <!-- Your Custom JS -->
+    <!-- App Frontend Logic -->
     <script src="/static/script.js"></script>
 
 </body>

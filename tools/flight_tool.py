@@ -311,6 +311,12 @@ def find_location_mentions(query: str):
         if re.search(rf"\b{re.escape(city)}\b", q):
             mentions.append(city)
 
+    # Indian Railway station city names from railkit tool
+    from tools.railkit_tool import CITY_STATION_CODES
+    for city in CITY_STATION_CODES:
+        if re.search(rf"\b{re.escape(city)}\b", q):
+            mentions.append(city)
+
     # Remove duplicate while keeping order
     unique_mentions = []
     for item in mentions:
